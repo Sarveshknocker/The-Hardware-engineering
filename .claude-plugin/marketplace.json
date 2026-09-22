@@ -1,0 +1,11 @@
+{
+  "name": "hardware-engineering",
+  "owner": { "name": "Sarvesh" },
+  "plugins": [
+    {
+      "name": "hardware-engineering",
+      "source": "./",
+      "description": "Hardware Engineering kit: idea to buildable, tested hardware system."
+    }
+  ]
+}

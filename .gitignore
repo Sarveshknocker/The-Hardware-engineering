@@ -1,0 +1,12 @@
+node_modules/
+.hw/
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+skills/hw-firmware/templates/firmware-core/test_core
+skills/hw-firmware/templates/firmware-core/test_core.exe
+build/
+sdkconfig
+sdkconfig.old

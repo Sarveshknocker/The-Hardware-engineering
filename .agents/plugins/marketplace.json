@@ -1,0 +1,21 @@
+{
+  "name": "hardware-engineering",
+  "interface": {
+    "displayName": "Hardware Engineering"
+  },
+  "plugins": [
+    {
+      "name": "hardware-engineering",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/Sarveshknocker/The-Hardware-engineering.git",
+        "ref": "main"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

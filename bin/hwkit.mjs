@@ -156,6 +156,8 @@ switch (cmd) {
   case 'pins': runScript('skills/hw-electrical/scripts/pins.mjs', rest); break;
   case 'power': runScript('skills/hw-power/scripts/power.mjs', rest); break;
   case 'bom': runScript('skills/hw-components/scripts/bom.mjs', rest); break;
+  case 'parts': runScript('skills/hw-components/scripts/parts.mjs', rest); break;
+  case 'kicad': runScript('skills/hw-pcb/scripts/kicad.mjs', rest); break;
   case 'fmea': runScript('skills/hw-validate/scripts/fmea.mjs', rest); break;
   default:
     console.log(`Hardware Engineering kit — turn a hardware idea into a buildable, testable, real-world system
@@ -170,5 +172,7 @@ Commands:
   pins     [pinmap.json]     pin-map & I²C checker (esp32, esp32-s3, esp32-c3, rp2040-pico, atmega328p) → .hw/PINMAP.md
   power    [power.json]      power budget, regulator checks, battery life → .hw/POWER_BUDGET.md
   bom      [bom.json|csv]    BOM cost at build sizes + supply-risk checks → .hw/BOM.md, bom.csv  [--builds 1,100,1000]
-  fmea     [fmea.json]       Design FMEA ranking (S·O·D, severity-first) → .hw/FMEA.md`);
+  fmea     [fmea.json]       Design FMEA ranking (S·O·D, severity-first) → .hw/FMEA.md
+  parts    search "<words>" | lookup <MPN|LCSC> | enrich [bom.json]   live stock, prices, JLC class, lifecycle (MOUSER_API_KEY)
+  kicad    bom <top.kicad_sch> | check <dir> | fab <board.kicad_pcb>   KiCad BOM extraction, ERC/DRC, fab outputs`);
 }

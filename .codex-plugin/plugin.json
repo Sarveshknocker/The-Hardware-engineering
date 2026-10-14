@@ -1,0 +1,35 @@
+{
+  "name": "hardware-engineering",
+  "version": "0.2.0",
+  "description": "Turn any hardware idea into a buildable, testable, real-world design with live part availability and KiCad checks.",
+  "author": {
+    "name": "Sarvesh",
+    "url": "https://github.com/Sarveshknocker"
+  },
+  "homepage": "https://github.com/Sarveshknocker/The-Hardware-engineering",
+  "repository": "https://github.com/Sarveshknocker/The-Hardware-engineering",
+  "license": "MIT",
+  "keywords": [
+    "hardware",
+    "electronics",
+    "embedded",
+    "firmware",
+    "iot",
+    "pcb"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Hardware Engineering",
+    "shortDescription": "Requirements to blueprint, with calculators, live stock and KiCad checks.",
+    "longDescription": "Requirements, research, architecture, trade studies, live part stock/price/lifecycle, pin and power checkers, circuit calculators, KiCad BOM extraction and ERC/DRC, firmware core, test plan, FMEA and a buildable blueprint.",
+    "developerName": "Sarvesh",
+    "category": "Productivity",
+    "capabilities": [],
+    "websiteURL": "https://github.com/Sarveshknocker/The-Hardware-engineering",
+    "defaultPrompt": [
+      "Design the hardware for this device idea end to end.",
+      "Check our KiCad project and BOM before ordering boards.",
+      "Find in-stock alternatives for these parts."
+    ]
+  }
+}

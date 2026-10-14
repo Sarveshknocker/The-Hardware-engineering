@@ -245,6 +245,185 @@ test('every skill has valid frontmatter, referenced files exist, orchestrator ro
   for (const n of ['pins.mjs', 'power.mjs', 'calc.mjs', 'bom.mjs', 'fmea.mjs', 'trade.mjs']) assert.ok(orch.includes(n), `orchestrator does not mention ${n}`);
 });
 
+// ---------------------------------------------------------------- v0.2: live parts, KiCad
+const { readSchematic, toBom, parseSexpr, summariseReport, checksMarkdown } = await import('../skills/hw-pcb/scripts/kicad.mjs');
+const http = await import('node:http');
+const zlib = await import('node:zlib');
+const { spawn } = await import('node:child_process');
+const nodeAsync = (args, opts = {}) => new Promise((resolve) => {
+  const c = spawn(process.execPath, args, { cwd: opts.cwd, env: { ...process.env, ...(opts.env ?? {}) } });
+  let stdout = ''; let stderr = '';
+  c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
+  c.on('close', (status) => resolve({ status, stdout, stderr }));
+});
+const PARTS = path.join(KIT, 'skills/hw-components/scripts/parts.mjs');
+const KICAD = path.join(KIT, 'skills/hw-pcb/scripts/kicad.mjs');
+
+/** Mock of the jlcparts static site and the Mouser search API. */
+async function mockParts() {
+  const gz = (s) => zlib.gzipSync(Buffer.from(s));
+  const schema = { lcsc: 0, mfr: 1, joints: 2, description: 3, datasheet: 4, price: 5, img: 6, url: 7, attributes: 8, stock: 9, subcategory: 10 };
+  const shard = [JSON.stringify(schema),
+    JSON.stringify(['C7000001', 'RT9013-33GB', 5, 'LDO 3.3V 500mA SOT-23-5', 'https://ds/rt9013', [{ qFrom: 1, qTo: 99, price: 0.06 }, { qFrom: 100, qTo: null, price: 0.04 }], null, null, [0], 120000, 1]),
+    JSON.stringify(['C7000002', 'XC6206P332MR', 3, 'LDO 3.3V 200mA SOT-23', 'https://ds/xc6206', [{ qFrom: 1, qTo: null, price: 0.03 }], null, null, [1], 900000, 1]),
+    JSON.stringify(['C7000003', 'RC0603FR-0710KL', 2, 'Resistor 10kΩ ±1% 0603', null, [{ qFrom: 1, qTo: null, price: 0.001 }], null, null, [1], 5000000, 2]),
+    JSON.stringify(['C7000004', 'RC0603FR-07510KL', 2, 'Resistor 510kΩ ±1% 0603', null, [{ qFrom: 1, qTo: null, price: 0.001 }], null, null, [0], 10, 2]),
+  ].join('\n');
+  const index = [
+    'C7000001\tshard-a.jsonl.gz\tc7000001 rt9013-33gb ldo 3.3v 500ma sot-23-5 (ldo) regulators',
+    'C7000002\tshard-a.jsonl.gz\tc7000002 xc6206p332mr ldo 3.3v 200ma sot-23 (ldo) regulators',
+    'C7000003\tshard-a.jsonl.gz\tc7000003 rc0603fr-0710kl 10kω ±1% 0603 chip resistor',
+    'C7000004\tshard-a.jsonl.gz\tc7000004 rc0603fr-07510kl 510kω ±1% 0603 chip resistor',
+  ].join('\n');
+  const lut = [['Basic/Extended', { values: { 'catalog class 1': ['Extended', 'identifier'] } }], ['Basic/Extended', { values: { 'catalog class 1': ['Basic', 'identifier'] } }]];
+  const seen = [];
+  const server = http.createServer((req, res) => {
+    seen.push(req.url);
+    let body = ''; req.on('data', (d) => { body += d; });
+    req.on('end', () => {
+      if (req.url === '/jlc/manifest.json') { res.writeHead(200); return res.end(JSON.stringify({ created: '2026-10-14T00:00:00Z', searchIndex: 'search-index.tsv.gz', attributesLut: 'lut.json.gz' })); }
+      if (req.url === '/jlc/search-index.tsv.gz') { res.writeHead(200); return res.end(gz(index)); }
+      if (req.url === '/jlc/lut.json.gz') { res.writeHead(200); return res.end(gz(JSON.stringify(lut))); }
+      if (req.url === '/jlc/shard-a.jsonl.gz') { res.writeHead(200); return res.end(gz(shard)); }
+      if (req.url.startsWith('/mouser/search/partnumber')) {
+        const mpn = JSON.parse(body).SearchByPartRequest.mouserPartNumber;
+        const parts = mpn === 'BME280' ? [{ ManufacturerPartNumber: 'BME280', Manufacturer: 'Bosch', Description: 'Env sensor', AvailabilityInStock: '4321', LifecycleStatus: 'Not Recommended for New Designs', PriceBreaks: [{ Quantity: 1, Price: '$4.10', Currency: 'USD' }], DataSheetUrl: 'https://ds/bme280', ProductDetailUrl: 'https://mouser/bme280' }] : [];
+        res.writeHead(200, { 'content-type': 'application/json' }); return res.end(JSON.stringify({ SearchResults: { Parts: parts } }));
+      }
+      res.writeHead(404); res.end();
+    });
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  return { server, seen, env: { HW_JLCPARTS_URL: `${base}/jlc`, HW_MOUSER_API: `${base}/mouser` } };
+}
+
+test('parts: token-aware search ranks Basic parts first; lookup by MPN/LCSC; honest "unknown" outside coverage', async () => {
+  const { server, env } = await mockParts();
+  const dir = tmp();
+  const e = { ...env, HW_CACHE: path.join(dir, 'cache'), MOUSER_API_KEY: '' };
+  try {
+    let r = await nodeAsync([PARTS, 'search', 'ldo', '3.3v', '--json'], { env: e });
+    assert.equal(r.status, 0, r.stderr);
+    const s = JSON.parse(r.stdout);
+    assert.deepEqual(s.parts.map((p) => p.mpn), ['XC6206P332MR', 'RT9013-33GB'], 'Basic before Extended');
+    assert.equal(s.parts[0].assemblyClass, 'Basic'); assert.deepEqual(s.parts[1].priceBreaks, [{ qty: 1, price: 0.06 }, { qty: 100, price: 0.04 }]);
+    r = await nodeAsync([PARTS, 'search', '10k', 'resistor', '--json'], { env: e });
+    assert.deepEqual(JSON.parse(r.stdout).parts.map((p) => p.lcsc), ['C7000003'], '"10k" must not match "510k"');
+    r = await nodeAsync([PARTS, 'search', 'resistor', '--min-stock', '1000', '--json'], { env: e });
+    assert.ok(JSON.parse(r.stdout).parts.every((p) => p.stock >= 1000));
+    r = await nodeAsync([PARTS, 'lookup', 'C7000001', '--json'], { env: e });
+    assert.equal(JSON.parse(r.stdout).results[0].mpn, 'RT9013-33GB');
+    r = await nodeAsync([PARTS, 'lookup', 'BME280'], { env: e });
+    assert.match(r.stdout, /Unknown: not in the free JLCPCB snapshot \(4 parts, LCSC ids ≥ C7000001/);
+    assert.match(r.stdout, /does not mean the part is unavailable/);
+  } finally { server.close(); }
+});
+
+test('parts enrich: fills stock, prices, JLC class and Mouser lifecycle into bom.json; bom.mjs costs it', async () => {
+  const { server, seen, env } = await mockParts();
+  const dir = tmp();
+  const e = { ...env, HW_CACHE: path.join(dir, 'cache'), MOUSER_API_KEY: 'test-key' };
+  fs.writeFileSync(path.join(dir, 'bom.json'), JSON.stringify([
+    { ref: 'U1', qty: 1, mpn: 'RT9013-33GB', description: 'LDO' }, { ref: 'U2', qty: 1, mpn: 'BME280', description: 'sensor' },
+    { ref: 'R1,R2', qty: 2, lcsc: 'C7000003', description: '10k' }, { ref: 'J1', qty: 1, description: 'USB-C' }, { ref: 'TP1', qty: 1, dnp: true },
+  ]));
+  try {
+    const r = await nodeAsync([PARTS, 'enrich', path.join(dir, 'bom.json'), '--out', dir, '--json'], { env: e });
+    assert.equal(r.status, 0, r.stderr);
+    const bom = JSON.parse(fs.readFileSync(path.join(dir, 'bom.json'), 'utf8'));
+    const u1 = bom.find((l) => l.ref === 'U1'); const u2 = bom.find((l) => l.ref === 'U2'); const r1 = bom.find((l) => l.ref === 'R1,R2');
+    assert.equal(u1.lcsc, 'C7000001'); assert.equal(u1.stock, 120000); assert.deepEqual(u1.price, { 1: 0.06, 100: 0.04 }); assert.equal(u1.assemblyClass, 'Extended');
+    assert.equal(u2.supplier, 'Mouser'); assert.equal(u2.lifecycle, 'nrnd'); assert.equal(u2.stock, 4321); assert.deepEqual(u2.price, { 1: 4.1 });
+    assert.equal(r1.assemblyClass, 'Basic');
+    const report = JSON.parse(r.stdout);
+    assert.match(report.find((x) => x.ref === 'J1').status, /no MPN/);
+    assert.equal(report.find((x) => x.ref === 'TP1').status, 'dnp');
+    assert.ok(seen.some((u) => u.includes('apiKey=test-key')));
+    assert.match(fs.readFileSync(path.join(dir, 'BOM_ENRICHMENT.md'), 'utf8'), /\| U2 \| BME280 \| ok \| 4321 \|/);
+    const cost = node([path.join(KIT, 'skills/hw-components/scripts/bom.mjs'), path.join(dir, 'bom.json'), '--out', dir, '--json']);
+    const a = JSON.parse(cost.stdout);
+    assert.ok(a.issues.some((i) => /NRND/i.test(i.msg) && i.ref === 'U2'), JSON.stringify(a.issues));
+    assert.equal(r1.mpn, 'RC0603FR-0710KL', 'MPN filled from the LCSC record');
+    assert.ok(!a.issues.some((i) => i.ref === 'R1,R2' && i.level === 'error'), 'an LCSC-only line is orderable');
+    assert.ok(a.issues.some((i) => i.ref === 'J1' && i.level === 'error'));
+  } finally { server.close(); }
+});
+
+const SUB = `(kicad_sch (version 20231120) (generator "eeschema")
+  (lib_symbols (symbol "Device:R" (property "Reference" "R")))
+  (symbol (lib_id "Device:R") (at 10 10 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+    (property "Reference" "R3" (at 0 0 0)) (property "Value" "10k" (at 0 0 0)) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 0 0 0)) (property "LCSC" "C25804" (at 0 0 0))
+    (instances (project "demo" (path "/root/sub1" (reference "R3") (unit 1)) (path "/root/sub2" (reference "R4") (unit 1)))))
+)`;
+const TOP = `(kicad_sch (version 20231120) (generator "eeschema")
+  (lib_symbols (symbol "Device:R" (property "Reference" "R")))
+  (symbol (lib_id "Device:R") (at 10 10 0) (unit 1) (in_bom yes) (on_board yes)
+    (property "Reference" "R1" (at 0 0 0)) (property "Value" "10k" (at 0 0 0)) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 0 0 0)) (property "LCSC" "C25804" (at 0 0 0)))
+  (symbol (lib_id "Device:R") (at 20 10 0) (unit 1) (in_bom yes) (on_board yes)
+    (property "Reference" "R10" (at 0 0 0)) (property "Value" "10k" (at 0 0 0)) (property "Footprint" "Resistor_SMD:R_0603_1608Metric" (at 0 0 0)) (property "LCSC" "C25804" (at 0 0 0)))
+  (symbol (lib_id "Amplifier_Operational:LM324") (at 30 10 0) (unit 1) (in_bom yes)
+    (property "Reference" "U1" (at 0 0 0)) (property "Value" "LM324" (at 0 0 0)) (property "Footprint" "Package_SO:SOIC-14" (at 0 0 0)) (property "MPN" "LM324DR" (at 0 0 0)) (property "Manufacturer" "TI" (at 0 0 0)))
+  (symbol (lib_id "Amplifier_Operational:LM324") (at 40 10 0) (unit 2) (in_bom yes)
+    (property "Reference" "U1" (at 0 0 0)) (property "Value" "LM324" (at 0 0 0)) (property "Footprint" "Package_SO:SOIC-14" (at 0 0 0)) (property "MPN" "LM324DR" (at 0 0 0)))
+  (symbol (lib_id "power:GND") (at 0 0 0) (property "Reference" "#PWR01" (at 0 0 0)) (property "Value" "GND" (at 0 0 0)))
+  (symbol (lib_id "Connector:TestPoint") (at 0 0 0) (dnp yes) (property "Reference" "TP1" (at 0 0 0)) (property "Value" "TestPoint" (at 0 0 0)) (property "Footprint" "TestPoint:TestPoint_Pad_1.0x1.0mm" (at 0 0 0)))
+  (symbol (lib_id "Graphic:Logo") (at 0 0 0) (in_bom no) (property "Reference" "LOGO1" (at 0 0 0)) (property "Value" "Logo" (at 0 0 0)))
+  (symbol (lib_id "Device:C") (at 0 0 0) (property "Reference" "C?" (at 0 0 0)) (property "Value" "100nF \\"X7R\\"" (at 0 0 0)) (property "Footprint" "Capacitor_SMD:C_0402_1005Metric" (at 0 0 0)))
+  (sheet (at 50 50) (size 10 10) (property "Sheetname" "sub" (at 0 0 0)) (property "Sheetfile" "sub.kicad_sch" (at 0 0 0)))
+  (sheet (at 70 50) (size 10 10) (property "Sheetname" "missing" (at 0 0 0)) (property "Sheetfile" "missing.kicad_sch" (at 0 0 0)))
+)`;
+
+test('kicad bom: hierarchy, per-instance refs, multi-unit, power/DNP/in_bom flags, grouping, escaped strings', () => {
+  assert.deepEqual(parseSexpr('(a "b \\"c\\"" (d 1))'), ['a', { str: 'b "c"' }, ['d', '1']]);
+  const dir = tmp();
+  fs.writeFileSync(path.join(dir, 'top.kicad_sch'), TOP); fs.writeFileSync(path.join(dir, 'sub.kicad_sch'), SUB);
+  const { parts, warnings } = readSchematic(path.join(dir, 'top.kicad_sch'));
+  assert.deepEqual(parts.map((p) => p.ref).sort(), ['C?', 'LOGO1', 'R1', 'R10', 'R3', 'R4', 'TP1', 'U1'].sort());
+  assert.ok(warnings.some((w) => /missing sheet file missing\.kicad_sch/.test(w)));
+  assert.ok(warnings.some((w) => /unannotated reference\(s\) \(C\?\)/.test(w)));
+  const bom = toBom(parts);
+  const r = bom.find((l) => l.ref.startsWith('R'));
+  assert.equal(r.ref, 'R1,R3,R4,R10', 'natural sort, one line for identical parts across sheets');
+  assert.equal(r.qty, 4); assert.equal(r.lcsc, 'C25804');
+  const u = bom.find((l) => l.ref === 'U1');
+  assert.equal(u.qty, 1, 'a quad op-amp is one part, not four'); assert.equal(u.mpn, 'LM324DR'); assert.equal(u.manufacturer, 'TI');
+  assert.ok(!bom.some((l) => l.ref.includes('LOGO1')), 'in_bom no excluded');
+  assert.equal(bom.find((l) => l.ref === 'TP1').dnp, true);
+  assert.equal(bom.find((l) => l.ref === 'C?').value, '100nF "X7R"');
+  const x = node([KICAD, 'bom', path.join(dir, 'top.kicad_sch'), '--out', path.join(dir, 'hw')]);
+  assert.equal(x.status, 0, x.stderr);
+  assert.match(x.stdout, /8 placed parts → 4 BOM lines/);
+  assert.ok(fs.existsSync(path.join(dir, 'hw/bom.json')));
+  fs.writeFileSync(path.join(dir, 'old.sch'), 'EESchema Schematic File Version 4');
+  assert.equal(node([KICAD, 'bom', path.join(dir, 'old.sch')]).status, 1);
+});
+
+test('kicad check: ERC/DRC JSON summarised; clear exit 3 when kicad-cli is missing', () => {
+  const erc = { sheets: [{ path: '/', violations: [{ severity: 'error', type: 'pin_not_connected', description: 'Pin not connected', items: [{ description: 'Pin 3 of U1' }] }, { severity: 'warning', type: 'lib_symbol_mismatch', description: 'Symbol differs' }] }] };
+  const drc = { violations: [{ severity: 'error', type: 'clearance', description: 'Clearance violation' }], unconnected_items: [{ severity: 'error', description: 'Missing connection' }], schematic_parity: [{ severity: 'warning', type: 'missing_footprint', description: 'J2 has no footprint' }] };
+  const e = summariseReport(erc, 'ERC'); const d = summariseReport(drc, 'DRC');
+  assert.equal(e.errors, 1); assert.equal(e.warnings, 1); assert.match(e.examples[0], /pin_not_connected: Pin not connected \(Pin 3 of U1\)/);
+  assert.equal(d.errors, 2); assert.equal(d.warnings, 1); assert.equal(d.byType['parity: missing_footprint'], 1); assert.equal(d.byType.unconnected_items, 1);
+  assert.match(checksMarkdown([e, d]), /## DRC: 2 error\(s\), 1 warning\(s\)/);
+  const r = spawnSync(process.execPath, [KICAD, 'check', tmp()], { encoding: 'utf8', env: { ...process.env, KICAD_CLI: path.join(tmp(), 'nope.exe') } });
+  assert.equal(r.status, 3); assert.match(r.stderr, /kicad-cli not found/);
+});
+
+test('evals well formed; plugin manifests agree with package.json; entry lists every skill', () => {
+  const e = JSON.parse(fs.readFileSync(path.join(KIT, 'evals/cases.json'), 'utf8'));
+  const ids = new Set();
+  for (const c of e.cases) { assert.ok(c.id && !ids.has(c.id)); ids.add(c.id); assert.ok(c.prompt && c.graders.length >= 2 && c.expected, c.id); }
+  assert.ok(e.cases.some((c) => c.kind === 'negative'));
+  const pkg = JSON.parse(fs.readFileSync(path.join(KIT, 'package.json'), 'utf8'));
+  // The plugin keeps its published name (install commands depend on it); versions must match the package.
+  const claude = JSON.parse(fs.readFileSync(path.join(KIT, '.claude-plugin/plugin.json'), 'utf8'));
+  const codex = JSON.parse(fs.readFileSync(path.join(KIT, '.codex-plugin/plugin.json'), 'utf8'));
+  assert.equal(codex.name, claude.name); assert.equal(claude.version, pkg.version); assert.equal(codex.version, pkg.version);
+  const entry = fs.readFileSync(path.join(KIT, 'adapters/entry.md'), 'utf8');
+  for (const s of fs.readdirSync(path.join(KIT, 'skills'))) assert.ok(entry.includes(`skills/${s}/SKILL.md`), `entry.md misses ${s}`);
+});
+
 if (process.env.LIVE === '1' || process.argv.includes('--live')) {
   test('LIVE: hardware research sources respond', async () => {
     const run = await research('esp32 deep sleep current', { limit: 3 });

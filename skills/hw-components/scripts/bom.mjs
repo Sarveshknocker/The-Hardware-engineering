@@ -60,14 +60,15 @@ export function analyseBom(rawItems, builds = [1, 100, 1000]) {
       refs.add(r);
     }
     if (it.dnp) continue;
-    if (!it.mpn) add('error', it.ref, 'missing manufacturer part number (MPN) — generic descriptions are not orderable');
+    if (!it.mpn && !it.lcsc) add('error', it.ref, 'missing manufacturer part number (MPN) or LCSC id — generic descriptions are not orderable');
+    else if (!it.mpn) add('warn', it.ref, `${it.lcsc}: LCSC id only — add the MPN so the part can be second-sourced`);
     if (!(it.qty > 0)) add('error', it.ref, 'quantity missing or zero');
     if (unitPrice(it.price, 1) === null) add('warn', it.ref, 'no price — look up current distributor pricing');
     const lc = String(it.lifecycle ?? 'unknown').toLowerCase();
     if (['eol', 'obsolete'].includes(lc)) add('error', it.ref, `${it.mpn}: lifecycle ${lc.toUpperCase()} — replace before design freeze`);
     else if (lc === 'nrnd') add('warn', it.ref, `${it.mpn}: NRND (not recommended for new designs)`);
     else if (lc === 'unknown') add('info', it.ref, `${it.mpn ?? '?'}: lifecycle unknown — check the manufacturer page`);
-    if (ACTIVE_REF.test(String(it.ref)) && !(it.alternates?.length)) add('warn', it.ref, `${it.mpn}: no alternate/second source for an active or critical part`);
+    if (ACTIVE_REF.test(String(it.ref)) && !(it.alternates?.length)) add('warn', it.ref, `${it.mpn ?? it.value ?? it.description ?? 'part'}: no alternate/second source for an active or critical part`);
     if (typeof it.stock === 'number' && builds.some((b) => it.stock < b * it.qty)) add('warn', it.ref, `${it.mpn}: stock ${it.stock} is below the need for a ${Math.max(...builds.filter((b) => it.stock < b * it.qty))}-unit build`);
   }
   const costs = builds.map((b) => {
@@ -85,7 +86,7 @@ export function analyseBom(rawItems, builds = [1, 100, 1000]) {
   }
   const order = { error: 0, warn: 1, info: 2 };
   issues.sort((a, b) => order[a.level] - order[b.level]);
-  return { lines: items.length, fitted: lines.length, uniqueParts: new Set(lines.map((l) => l.mpn)).size, costs, byCategory, issues, ok: !issues.some((i) => i.level === 'error') };
+  return { lines: items.length, fitted: lines.length, uniqueParts: new Set(lines.map((l) => l.mpn ?? l.lcsc ?? `${l.value}|${l.footprint}`)).size, costs, byCategory, issues, ok: !issues.some((i) => i.level === 'error') };
 }
 
 export function toMarkdown(rawItems, a) {

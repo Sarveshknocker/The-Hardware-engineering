@@ -1,13 +1,51 @@
 {
   "name": "hardware-engineering-kit",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "repository": "github:Sarveshknocker/The-Hardware-engineering",
   "description": "Turns any hardware idea into a buildable, testable, real-world system: requirements, research, architecture, component trade studies, wiring & pin maps, power, PCB, firmware, testing and BOM — for any AI coding assistant.",
   "type": "module",
-  "bin": { "hwkit": "bin/hwkit.mjs" },
-  "files": ["bin", "skills", "agents", "adapters", ".claude-plugin", "README.md", "LICENSE"],
-  "engines": { "node": ">=18" },
-  "scripts": { "test": "node tests/run.mjs", "test:live": "node tests/run.mjs --live" },
-  "keywords": ["hardware", "electronics", "embedded", "firmware", "iot", "pcb", "esp32", "rp2040", "stm32", "ai-agents", "agents-md", "claude-code", "cursor", "copilot"],
+  "bin": {
+    "hwkit": "bin/hwkit.mjs"
+  },
+  "files": [
+    "bin",
+    "skills",
+    "agents",
+    "adapters",
+    ".claude-plugin",
+    "README.md",
+    "LICENSE",
+    ".codex-plugin",
+    ".agents",
+    "evals"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node tests/run.mjs",
+    "test:live": "node tests/run.mjs --live"
+  },
+  "keywords": [
+    "hardware",
+    "electronics",
+    "embedded",
+    "firmware",
+    "iot",
+    "pcb",
+    "esp32",
+    "rp2040",
+    "stm32",
+    "ai-agents",
+    "agents-md",
+    "claude-code",
+    "cursor",
+    "copilot",
+    "kicad",
+    "bom",
+    "jlcpcb",
+    "component-availability",
+    "agent-skills"
+  ],
   "license": "MIT"
 }

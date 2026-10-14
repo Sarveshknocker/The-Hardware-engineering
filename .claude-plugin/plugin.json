@@ -1,7 +1,20 @@
 {
   "name": "hardware-engineering",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Turns any hardware idea into a buildable, testable system: requirements, research, architecture, component trade studies, wiring & pin checks, power budget, PCB, tested firmware, FMEA and BOM.",
-  "author": { "name": "Sarvesh", "url": "https://github.com/Sarveshknocker" },
-  "keywords": ["hardware", "electronics", "embedded", "firmware", "iot", "pcb"]
+  "author": {
+    "name": "Sarvesh",
+    "url": "https://github.com/Sarveshknocker"
+  },
+  "keywords": [
+    "hardware",
+    "electronics",
+    "embedded",
+    "firmware",
+    "iot",
+    "pcb"
+  ],
+  "repository": "https://github.com/Sarveshknocker/The-Hardware-engineering",
+  "homepage": "https://github.com/Sarveshknocker/The-Hardware-engineering",
+  "license": "MIT"
 }

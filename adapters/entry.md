@@ -19,4 +19,4 @@ This workspace has the **Hardware Engineering** kit at `{{KIT}}/`. Whenever the 
 Sub-agent briefs: `{{KIT}}/agents/`. Calculators/checkers are dependency-free Node ≥ 18; the firmware core builds with any C99 compiler.
 
 **Mode: autonomous** — one idea → `.hw/HARDWARE_BLUEPRINT.md` with all supporting documents and code. Record assumptions instead of asking.
-Always: values from current datasheets (cited), compare practical alternatives, compute with the kit tools, design safety into hardware, recommend qualified review for mains/Li-ion/high-energy designs.
+Always: values from current datasheets (cited), compare practical alternatives, compute with the kit tools, check real stock/lifecycle before committing to a part, design safety into hardware, recommend qualified review for mains/Li-ion/high-energy designs.

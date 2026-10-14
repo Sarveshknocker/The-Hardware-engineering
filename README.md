@@ -25,6 +25,13 @@ LLMs are good at explaining electronics but make confident mistakes with numbers
 | `research.mjs` | Open designs & firmware (GitHub), **EE Stack Exchange**, HN, arXiv, OpenAlex, Wikipedia; the AI adds datasheets, errata, app notes and distributor data via web search |
 | **Firmware core** (C99) | Portable HAL + fault manager + filters + plausibility checks + hysteresis control with min on/off times + store-and-forward buffer + BOOT→SELF_TEST→RUN⇄SAFE state machine, watchdog, brown-out and actuator-feedback handling. **54 host unit tests**, `-Wall -Wextra -Werror` clean, **ESP-IDF v5 and Arduino ports** |
 
+## What's new in 0.2
+| Capability | What it does |
+|---|---|
+| **Live parts** (`parts`) | Searches ~120k in-stock JLCPCB/LCSC parts (daily jlcparts snapshot, no key) with stock, price breaks and the JLCPCB Basic/Extended class (Extended parts add an assembly setup fee). With a free Mouser API key it adds lifecycle (Active / NRND / Obsolete). `enrich` fills stock, prices, LCSC ids, MPNs and lifecycle into your BOM with dates. |
+| **KiCad integration** (`kicad`) | Reads a KiCad 6–9 schematic (all sheets, per-instance references, multi-unit parts, DNP and "exclude from BOM" flags) into a BOM without needing KiCad. With kicad-cli it runs ERC, DRC and schematic parity and exports Gerbers, drill and pick-and-place files. |
+| **Honest gaps** | A part missing from the free snapshot is reported as *unknown*, never *unavailable*; the output always states what the data covers and its date. |
+
 ## Your 16 requirements → where they live
 | # | Requirement | Skill / output |
 |---|---|---|
@@ -62,7 +69,12 @@ node bin/hwkit.mjs power    .hw/power.json
 node bin/hwkit.mjs calc     i2c-pullup --vdd 3.3 --cb 150e-12 --mode fast
 node bin/hwkit.mjs calc     divider --vin-max 14.6 --vout-max 3.0
 node bin/hwkit.mjs trade    .hw/trade-mcu.json
-node bin/hwkit.mjs bom      .hw/bom.csv --builds 1,100,1000
+node bin/hwkit.mjs kicad    bom project.kicad_sch                 # schematic → .hw/bom.json
+node bin/hwkit.mjs parts    search "ldo 3.3v sot-23-5" --min-stock 1000
+node bin/hwkit.mjs parts    enrich .hw/bom.json                    # live stock, prices, JLC class, lifecycle
+node bin/hwkit.mjs bom      .hw/bom.json --builds 1,100,1000
+node bin/hwkit.mjs kicad    check .                                # ERC + DRC + parity (needs kicad-cli)
+node bin/hwkit.mjs kicad    fab   project.kicad_pcb                # Gerbers, drill, pick-and-place
 node bin/hwkit.mjs fmea     .hw/fmea.json
 node bin/hwkit.mjs research "lora soil moisture node"
 ```
@@ -73,12 +85,16 @@ Designs involving mains voltage, lithium batteries, high current, heaters, motor
 
 ## Limitations
 - **Datasheets are the source of truth.** MCU profiles and the I²C address table are curated conveniences. The AI is instructed to verify every value against the current datasheet and errata.
-- **Prices and stock change daily.** The BOM tool computes; the AI must look up and date the prices.
+- **Prices and stock change daily.** `parts` dates everything it fills in. The free JLCPCB snapshot currently covers newer LCSC part numbers only (about 120k parts), so older classics may be missing; set `MOUSER_API_KEY` (free) for broad coverage and lifecycle data, and confirm before ordering.
+- **`kicad check` and `kicad fab` need KiCad ≥ 7 installed** (kicad-cli). BOM extraction works without it.
 - **The ESP-IDF and Arduino ports are written against current APIs but haven't been compiled in CI**, because that needs those SDKs. The portable core is compiled and unit-tested. Build the ports once on your toolchain.
 - **Paper designs need bring-up.** The test plan starts with a current-limited, step-by-step bring-up for exactly that reason.
 
 ## Related kits
-[Idea Enhancer](https://github.com/Sarveshknocker/-Idea-Enhancer-and-Value-Maximiser) (concept & business) · [The AI Maker](https://github.com/Sarveshknocker/The-Ai-Maker-) (on-device AI) · [The-protectors-](https://github.com/Sarveshknocker/The-protectors-) (firmware & IoT security) · [3D-animated-web-developer](https://github.com/Sarveshknocker/3D-animated-web-developer) (product website).
+[Idea Enhancer](https://github.com/Sarveshknocker/-Idea-Enhancer-and-Value-Maximiser) (concept & business) · [The AI Maker](https://github.com/Sarveshknocker/The-Ai-Maker-) (on-device AI) · [The-protectors-](https://github.com/Sarveshknocker/The-protectors-) (firmware & IoT security) · [3D-animated-web-developer](https://github.com/Sarveshknocker/3D-animated-web-developer) (product website) · [The-Reconstructor](https://github.com/Sarveshknocker/The-Reconstructor) (understand existing firmware).
+
+## Credits
+Ideas and data sources are listed in [CREDITS.md](CREDITS.md); the comparison with leading open-source projects is in [research/BENCHMARK.md](research/BENCHMARK.md).
 
 ## Develop
 ```bash

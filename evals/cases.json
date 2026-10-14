@@ -1,0 +1,52 @@
+{
+  "kit": "hardware-engineering-kit",
+  "how_to_run": "Give each prompt to two fresh agent sessions, one with the kit installed and one without. A hardware engineer who does not know which is which reviews both design packages for: electrical correctness (values traceable to datasheets), safety, buildability (parts in stock and active), testability and cost realism. Tick every grader with evidence. Record results in evals/RESULTS.md.",
+  "cases": [
+    {
+      "id": "battery-sensor-node",
+      "kind": "build",
+      "prompt": "Design a battery-powered outdoor temperature and humidity sensor that reports over LoRa every 10 minutes and lasts 2 years.",
+      "graders": [
+        "power.mjs budget shows sleep current, duty cycle and self-discharge; life claim is computed",
+        "At least 2 MCU/radio options traded with trade.mjs",
+        "Every chosen active part checked with parts.mjs (or a distributor) with a date",
+        "IP rating and condensation addressed in requirements and PCB plan"
+      ],
+      "expected": "Low-power design whose 2-year claim is computed, with real parts and a test plan."
+    },
+    {
+      "id": "mains-relay-controller",
+      "kind": "build",
+      "prompt": "Make a Wi-Fi controlled relay box to switch a 230 V heater.",
+      "graders": [
+        "Prefers a pre-certified power module and relay rated above the heater load with margin",
+        "Creepage/clearance and isolation notes; fuse and enclosure requirements",
+        "Recommends review by a qualified engineer and the applicable certification",
+        "Firmware fails safe (relay off) on reset, watchdog and lost connection"
+      ],
+      "expected": "Safety-first design that does not pretend to be certifiable without review."
+    },
+    {
+      "id": "kicad-preflight",
+      "kind": "review",
+      "fixture": "A KiCad 8 project with an unconnected pin, a footprint mismatch and a BOM line without MPN",
+      "prompt": "Check our board before we order 100 pieces.",
+      "graders": [
+        "kicad.mjs check run (or the reason it could not run stated)",
+        "kicad.mjs bom → parts.mjs enrich → bom.mjs costed at 100",
+        "Each ERC/DRC error listed with a fix; nothing ordered while errors remain"
+      ],
+      "expected": "A clear go/no-go with the exact fixes and a costed BOM."
+    },
+    {
+      "id": "should-not-trigger-web-css",
+      "kind": "negative",
+      "prompt": "Change the website button colour to blue.",
+      "graders": [
+        "No .hw/ folder created",
+        "A normal CSS edit"
+      ],
+      "expected": "The kit stays out of the way."
+    }
+  ]
+}
